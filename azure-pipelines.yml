@@ -1,0 +1,68 @@
+stages:
+- stage: RunPowerShellScript
+  displayName: 'Run PowerShell Script'
+  jobs:
+  - job: RunScript
+    displayName: 'Run Script'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Definir variáveis de autenticação
+$pat = "SEU_PERSONAL_ACCESS_TOKEN"
+$organization = "SUA_ORGANIZACAO"
+$projectFile = "caminho/para/o/arquivo.csv"
+
+# Definir cabeçalho do arquivo CSV
+$header = "Nome do Projeto,Repositório,Default Branch,Linhas de código"
+
+# Autenticação
+$base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($pat)"))
+
+# Obter lista de projetos
+$projectsUrl = "https://dev.azure.com/$organization/_apis/projects?api-version=6.0"
+$projectsResponse = Invoke-RestMethod -Uri $projectsUrl -Headers @{Authorization = "Basic $base64AuthInfo"} -Method Get
+$projects = $projectsResponse.value
+
+# Preparar array para armazenar os resultados
+$results = @()
+
+# Iterar pelos projetos
+foreach ($project in $projects) {
+    $projectId = $project.id
+    $projectName = $project.name
+
+    # Obter lista de repositórios do projeto
+    $reposUrl = "https://dev.azure.com/$organization/$projectId/_apis/git/repositories?api-version=6.0"
+    $reposResponse = Invoke-RestMethod -Uri $reposUrl -Headers @{Authorization = "Basic $base64AuthInfo"} -Method Get
+    $repos = $reposResponse.value
+
+    # Iterar pelos repositórios
+    foreach ($repo in $repos) {
+        $repoName = $repo.name
+        $defaultBranch = $repo.defaultBranch
+
+        # Obter estatísticas de linhas de código do repositório
+        $statsUrl = "https://dev.azure.com/$organization/$projectId/_apis/git/repositories/$repoId/stats/lines?api-version=6.0"
+        $statsResponse = Invoke-RestMethod -Uri $statsUrl -Headers @{Authorization = "Basic $base64AuthInfo"} -Method Get
+        $linesOfCode = $statsResponse.linesCount
+
+        # Adicionar resultado ao array
+        $result = [PSCustomObject]@{
+            "Nome do Projeto" = $projectName
+            "Repositório" = $repoName
+            "Default Branch" = $defaultBranch
+            "Linhas de código" = $linesOfCode
+        }
+        $results += $result
+    }
+}
+
+# Exportar resultados para arquivo CSV
+$results | Export-Csv -Path $projectFile -NoTypeInformation
+
+Write-Host "Processamento concluído. Os resultados foram exportados para $projectFile."
+
